@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.AGENT_PORT || 4000;
 const AI_PROVIDER = process.env.VITE_AI_PROVIDER || 'GEMINI';
 
+// --- AI Provider Initialization ---
 let gemini: GoogleGenerativeAI;
 let anthropic: Anthropic;
 let generativeModel: any;
@@ -17,7 +18,8 @@ let generativeModel: any;
 if (AI_PROVIDER === 'GEMINI') {
     gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     generativeModel = gemini.getGenerativeModel({
-        model: "gemini-1.5-flash-latest",
+        // ** THIS IS THE CHANGED LINE **
+        model: "gemini-2.0-flash",
         tools: [{ functionDeclarations: [relevantDataFunctionDefinition] }],
         systemInstruction: getSystemInstruction(),
     });
@@ -29,9 +31,11 @@ if (AI_PROVIDER === 'GEMINI') {
 
 const chatIdToHistoryMap = new Map<string, any[]>();
 
+// --- Express Middleware ---
 app.use(cors());
 app.use(express.json());
 
+// --- API Endpoints ---
 app.post('/api/start', async function (req, res) {
     const uuid = randomUUID();
     chatIdToHistoryMap.set(uuid, []);
@@ -59,8 +63,6 @@ app.post('/api/send', async function (req, res) {
             const result = await chat.sendMessageStream(message);
             await processGeminiStream(result.stream, res, chat);
 
-            // **THE FIX**: After the entire turn is complete, get the
-            // final history from the chat session and save it back to our map.
             const finalHistory = await chat.getHistory();
             chatIdToHistoryMap.set(chatId, finalHistory);
         }
@@ -70,7 +72,7 @@ app.post('/api/send', async function (req, res) {
         if (!res.headersSent) {
             res.status(500).json({ error: "Error processing request" });
         } else {
-            res.write("\n\nAn error occurred while processing your request.");
+            res.write("\n\nAn unexpected error occurred while processing your request.");
             res.end();
         }
     }
@@ -96,21 +98,22 @@ async function processGeminiStream(stream: any, res: express.Response, chat: Cha
     }
 }
 
-interface FunctionCallArgs {
-    query: string;
-}
-
 async function handleGeminiFunctionCall(functionCall: Part['functionCall'], res: express.Response, chat: ChatSession) {
     if (!functionCall) return;
 
-    const args = functionCall.args as FunctionCallArgs;
-
+    const currentHistory = await chat.getHistory();
     const { allAnswers, liveboard } = await getRelevantData(
-        args.query,
+        (functionCall.args as { query: string }).query,
         (data) => {
             res.write(data);
-        }
+        },
+        currentHistory
     );
+
+    if (!allAnswers || allAnswers.length === 0) {
+        console.log("[INFO] getRelevantData returned no answers. Halting this turn.");
+        return;
+    }
 
     const functionResponse = {
         functionResponse: {
@@ -159,6 +162,7 @@ async function handleClaudeRequest(history: any[], res: express.Response) {
 }
 
 
+// --- Shared System Instruction ---
 function getSystemInstruction() {
     return `
         You are a helpful assistant, which can answer questions by using the relevant data tool which returns relevant data from a database to answer any question. Use the tool when you feel appropriate. The questions are generally business questions. Like "How do I increase sales?" You will get the relevant data and provide a summary with specific actions and recommendations based on the data and your own knowledge. Quote specific data points from the data to support your recommendations, make all numbers human readable. Provide a link to the liveboard at the end of your response for the user to open in a new tab in a read friendly format.
