@@ -11,24 +11,32 @@ export const relevantDataFunctionDefinition: any = {
                 type: SchemaType.STRING,
                 description: "The user's query that will be answered with a single, targeted visualization.",
             },
+            // **THE FIX: Add a parameter for chart type**
+            chartType: {
+                type: SchemaType.STRING,
+                description: "Optional. The desired type of chart to visualize the data. Supported types include: 'COLUMN', 'BAR', 'LINE', 'PIE', 'AREA', 'SCATTER', 'BUBBLE', 'HEATMAP', 'TABLE'. Defaults to the best fit if not specified."
+            }
         },
         required: ["query"],
     },
 };
 
-export const getRelevantData = async (query: string, streamCb: (data: any) => void, history: any[] = []) => {
+export const getRelevantData = async (
+    args: { query: string, chartType?: string }, 
+    streamCb: (data: any) => void, 
+    history: any[] = []
+) => {
     try {
-        // Create a string from the chat history to use as context for the ThoughtSpot API.
+        const { query, chartType } = args; // Destructure the arguments
+
         const contextString = history
             .map(h => {
                 const role = h.role === 'model' ? 'assistant' : h.role;
-                // Safely access text parts of a message
                 const text = h.parts?.map((p: any) => p.text || '').join('') || '';
                 return `${role}: ${text}`;
             })
             .join('\n');
 
-        // Step 1: Get the best single data question, now with conversational context.
         const relevantQuestions = await getRelevantQuestions(query, contextString);
 
         if (!relevantQuestions || relevantQuestions.length === 0) {
@@ -37,29 +45,25 @@ export const getRelevantData = async (query: string, streamCb: (data: any) => vo
         }
 
         const primaryQuestion = relevantQuestions[0];
-        console.log(`[DEBUG] Identified primary question with context: "${primaryQuestion}"`);
+        console.log(`[DEBUG] Identified primary question: "${primaryQuestion}", Chart Type: ${chartType || 'Default'}`);
         streamCb(`Searching for an answer to: "${primaryQuestion}"...`);
 
-        // Step 2: Get the single answer for that question.
-        const answer = await getAnswerForQuestion(primaryQuestion);
+        // Pass the requested chartType to the function that gets the answer.
+        const answer = await getAnswerForQuestion(primaryQuestion, chartType);
 
         if (!answer) {
             streamCb(`Sorry, I was unable to retrieve data for the question: "${primaryQuestion}".`);
             return { allAnswers: [], liveboard: null };
         }
 
-        // Step 3: Create a Liveboard with the single visualization.
         const singleAnswerArray = [answer];
         const liveboard = await createLiveboard(query, singleAnswerArray);
         
-        // Step 4: Return the result to be processed by the AI model.
         return {
             allAnswers: singleAnswerArray,
             liveboard,
         };
     } catch (error) {
-        // **IMPROVED ERROR HANDLING**
-        // If any part of the process fails, log the error and inform the user.
         console.error("[ERROR] in getRelevantData:", error);
         streamCb("An unexpected error occurred while trying to fetch data from ThoughtSpot. Please try again.");
         return { allAnswers: [], liveboard: null };

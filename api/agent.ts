@@ -101,9 +101,12 @@ async function processGeminiStream(stream: any, res: express.Response, chat: Cha
 async function handleGeminiFunctionCall(functionCall: Part['functionCall'], res: express.Response, chat: ChatSession) {
     if (!functionCall) return;
 
+    // **THE FIX: The arguments from the model now include the chartType.**
+    const functionArgs = functionCall.args as { query: string, chartType?: string };
+
     const currentHistory = await chat.getHistory();
     const { allAnswers, liveboard } = await getRelevantData(
-        (functionCall.args as { query: string }).query,
+        functionArgs, // Pass the entire arguments object
         (data) => {
             res.write(data);
         },
@@ -132,7 +135,6 @@ async function handleGeminiFunctionCall(functionCall: Part['functionCall'], res:
     const result = await chat.sendMessageStream([functionResponse]);
     await processGeminiStream(result.stream, res, chat);
 }
-
 
 // --- Claude Handler ---
 async function handleClaudeRequest(history: any[], res: express.Response) {
@@ -166,6 +168,11 @@ async function handleClaudeRequest(history: any[], res: express.Response) {
 function getSystemInstruction() {
     return `
         You are a helpful assistant, which can answer questions by using the relevant data tool which returns relevant data from a database to answer any question. Use the tool when you feel appropriate. The questions are generally business questions. Like "How do I increase sales?" You will get the relevant data and provide a summary with specific actions and recommendations based on the data and your own knowledge. Quote specific data points from the data to support your recommendations, make all numbers human readable. Provide a link to the liveboard at the end of your response for the user to open in a new tab in a read friendly format.
+
+        **IMPORTANT INSTRUCTION FOR CHARTS**: When a user asks for a specific chart type like a 'bar chart', 'pie chart', or 'column chart' based on previous data, you MUST NOT ask for the same list of data again. Instead, you MUST transform the query into an aggregation suitable for that chart. 
+        - Example 1: If the user sees a table of shippers and asks "show this as a bar chart", your new query should be "show the count of loads by shipper as a bar chart".
+        - Example 2: If the user sees a table of loads with different ETA statuses and asks "can I see a pie chart?", your new query should be "show the count of loads by ETA status as a pie chart".
+        Always ask for a summarized or aggregated query when creating a chart.
     `;
 }
 

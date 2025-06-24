@@ -5,6 +5,7 @@ const THOUGHTSPOT_HOST: string = process.env.VITE_THOUGHTSPOT_HOST || "";
 
 
 export async function getRelevantQuestions(query: string, additionalContext: string = ''): Promise<string[]> {
+    // ... (This function remains the same)
     console.log("[DEBUG] Getting relevant questions for query: ", query, "with additional context: ", additionalContext);
     const startTime = Date.now();
     try {
@@ -28,12 +29,16 @@ export async function getRelevantQuestions(query: string, additionalContext: str
     }
 }
 
-export async function getAnswerForQuestion(question: string) {
-    console.log("[DEBUG] Getting answer for question: ", question);
+// **THE FIX: Update this function to accept and use the chartType**
+export async function getAnswerForQuestion(question: string, chartType?: string) {
+    console.log(`[DEBUG] Getting answer for question: "${question}" with chart type: ${chartType}`);
+    
+    // The singleAnswer call now includes the visualization parameter if a chartType is provided.
     const answer = await thoughtSpotClient.singleAnswer({
         query: question,
         metadata_identifier: DATA_SOURCE_ID,
-    })
+        visualization: chartType ? { type: chartType.toUpperCase() as any } : undefined,
+    });
 
     console.log("[DEBUG] Getting Data for question: ", question);
     const [data, tml] = await Promise.all([
@@ -46,7 +51,7 @@ export async function getAnswerForQuestion(question: string) {
             session_identifier: answer.session_identifier!,
             generation_number: answer.generation_number!,
         })
-    ])
+    ]);
 
     return {
         question,
@@ -57,6 +62,7 @@ export async function getAnswerForQuestion(question: string) {
 }
 
 export async function createLiveboard(name: string, answers: any[]) {
+    // ... (This function remains the same)
     const tml = {
         liveboard: {
             name,
@@ -81,18 +87,9 @@ export async function createLiveboard(name: string, answers: any[]) {
         import_policy: "ALL_OR_NONE",
     })
 
-    // **FIX STARTS HERE**
-    // Ensure the host URL is correctly formatted before creating the final link.
     let host = THOUGHTSPOT_HOST;
-
-    // Check if the host does not already start with http:// or https://
     if (!/^https?:\/\//i.test(host)) {
         host = `https://${host}`;
     }
-
-    // Construct the final, correct URL.
     return `${host}/#/pinboard/${resp[0].response.header.id_guid}`;
-    // **FIX ENDS HERE**
 }
-
-
