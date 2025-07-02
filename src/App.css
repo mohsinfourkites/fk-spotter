@@ -279,3 +279,38 @@
     font-size: 16px; /* Prevents zoom on iOS */
   }
 }
+
+
+/* Add these new styles to src/App.css */
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.suggestions-container {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  margin-left: 10px; /* Aligns with the assistant message bubble */
+  max-width: 80%;
+}
+
+.suggestion-button {
+  background-color: #f0f2f5;
+  border-color: #d9d9d9;
+  border-radius: 16px;
+  color: #3884ff;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.suggestion-button:hover {
+  background-color: #e6f7ff;
+  border-color: #3884ff;
+  transform: translateY(-1px);
+}
